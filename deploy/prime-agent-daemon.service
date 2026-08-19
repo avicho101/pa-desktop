@@ -1,0 +1,18 @@
+[Unit]
+Description=prime-agent daemon (pa-desktop / pa-web backend)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/prime-agent
+Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.hermes/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=/home/ubuntu
+ExecStart=/home/ubuntu/.hermes/node/bin/node /home/ubuntu/prime-agent/packages/coding-agent/dist/bundle/cli.js --mode daemon
+Restart=always
+RestartSec=3
+# Prime-agent needs a writable home for .prime
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
