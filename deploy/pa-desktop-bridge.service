@@ -11,7 +11,7 @@ WorkingDirectory=/home/ubuntu/pa-desktop/bridge
 Environment=PA_DESKTOP_HARNESS=/home/ubuntu/prime-agent/packages/coding-agent/dist/index.js
 Environment=HOST=100.77.132.68
 Environment=PORT=8788
-ExecStart=/home/ubuntu/.nvm/versions/node/v24.18.0/bin/node /home/ubuntu/pa-desktop/bridge/server.mjs
+ExecStart=/home/ubuntu/.hermes/node/bin/node /home/ubuntu/pa-desktop/bridge/server.mjs
 Restart=always
 RestartSec=3
 
