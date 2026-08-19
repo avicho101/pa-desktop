@@ -23,6 +23,8 @@ select:focus{border-color:var(--ac2)}
 #newBtn{background:var(--ac);border:none;color:#0d0f14;font-weight:700;border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
 #modelBtn{background:var(--bg3);color:var(--ac);border:1px solid rgba(138,180,255,.35);border-radius:999px;padding:5px 12px;font-size:11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}
 #gearBtn{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;color:var(--dim);font-size:16px;padding:5px 9px;cursor:pointer}
+#memBtn{background:var(--bg3);border:1px solid var(--bd);border-radius:8px;color:var(--dim);font-size:15px;padding:5px 9px;cursor:pointer}
+#memBtn:hover,#gearBtn:hover{border-color:var(--ac2);color:var(--txt)}
 #messages{flex:1;overflow-y:auto;padding:14px 12px}
 .msg{max-width:88%;margin:0 auto 14px}
 .msg .who{font-size:11px;font-weight:700;color:var(--faint);margin-bottom:3px}
@@ -105,6 +107,7 @@ input:focus{border-color:var(--ac2)}
   <select id="agentSel" title="Session"></select>
   <button id="newBtn" title="New session">+</button>
   <button id="gearBtn" title="Settings">⚙</button>
+  <button id="memBtn" title="Memory & skills">🧠</button>
 </header>
 <div id="messages"><div style="text-align:center;color:var(--faint);padding:30px;font-size:13px">Loading sessions…</div></div>
 <div class="composer">
@@ -249,7 +252,55 @@ async function openModelPicker(){
   render("");
 }
 
-// ---------- SETTINGS ----------
+// ---------- MEMORY & SKILLS ----------
+async function openMemory(){
+  const ov=document.createElement("div");ov.className="overlay";
+  ov.innerHTML='<div class="modal" style="max-width:640px"><div class="mhead"><h3>Memory &amp; Skills</h3><button class="mclose">×</button></div><div class="mbody">'+
+    '<div class="ssection">Long-term memory</div>'+
+    '<p style="font-size:11.5px;color:var(--faint);margin:4px 0 8px">Facts the agent persists across sessions. Edit and save, or the agent appends to it automatically.</p>'+
+    '<textarea id="memText" style="width:100%;height:170px;background:var(--bg);border:1px solid var(--bd);border-radius:9px;color:var(--txt);font-size:12.5px;padding:10px;font-family:ui-monospace,monospace;resize:vertical;outline:none" spellcheck="false"></textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'+
+      '<button class="btn" id="memSave">Save memory</button>'+
+      '<button class="btn" id="memAppend" title="Add a dated fact">+ Add fact</button>'+
+      '<span class="spacer"></span><span id="memNote" class="savednote"></span>'+
+    '</div>'+
+    '<div class="ssection" style="margin-top:16px">Skills <small style="color:var(--faint);text-transform:none">(auto-loaded into the agent)</small></div>'+
+    '<div id="skillList"></div>'+
+    '<div style="margin-top:10px;border-top:1px solid var(--bd2);padding-top:10px">'+
+      '<div class="srow"><div class="slabel"><span class="sname">New skill</span><span class="sdesc">Save a reusable procedure</span></div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px">'+
+        '<input type="text" id="skName" placeholder="skill-name">'+
+        '<input type="text" id="skDesc" placeholder="Short description">'+
+        '<textarea id="skContent" style="width:100%;height:110px;background:var(--bg);border:1px solid var(--bd);border-radius:9px;color:var(--txt);font-size:12.5px;padding:10px;font-family:ui-monospace,monospace;resize:vertical;outline:none" placeholder="Markdown instructions for the skill…"></textarea>'+
+        '<button class="btn" id="skSave" style="align-self:flex-start">Save skill</button>'+
+      '</div>'+
+    '</div>'+
+  '</div></div>';
+  document.body.appendChild(ov);
+  const modal=ov.querySelector(".modal");
+  ov.onclick=()=>ov.remove();modal.onclick=e=>e.stopPropagation();
+  ov.querySelector(".mclose").onclick=()=>ov.remove();
+  const note=ov.querySelector("#memNote");
+  async function refresh(){
+    const d=await j("/api/memory");
+    ov.querySelector("#memText").value=d.memory||"";
+    const list=ov.querySelector("#skillList");list.innerHTML="";
+    (d.skills||[]).forEach(s=>{
+      const row=document.createElement("div");row.className="srow";
+      row.innerHTML='<div class="slabel"><span class="sname">'+escapeHtml(s.name)+'</span><span class="sdesc">'+escapeHtml(s.description)+'</span></div>';
+      const del=document.createElement("button");del.className="btn";del.textContent="Delete";del.style.fontSize="11px";del.style.padding="4px 9px";
+      del.onclick=async()=>{if(!confirm("Delete skill "+s.name+"?"))return;await j("/api/skills/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:s.name})});refresh();toast("Deleted "+s.name)};
+      row.appendChild(del);list.appendChild(row);
+    });
+    if(!d.skills||!d.skills.length)list.innerHTML='<div class="empty">No skills yet.</div>';
+  }
+  ov.querySelector("#memSave").onclick=async()=>{try{await j("/api/memory/write",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:ov.querySelector("#memText").value})});note.textContent="✓ Memory saved";toast("Memory saved")}catch(e){note.textContent="✗ "+e.message}};
+  ov.querySelector("#memAppend").onclick=async()=>{const f=prompt("New fact to remember:");if(!f)return;try{await j("/api/memory/append",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fact:f})});note.textContent="✓ Fact added";toast("Fact added");refresh()}catch(e){note.textContent="✗ "+e.message}};
+  ov.querySelector("#skSave").onclick=async()=>{const n=ov.querySelector("#skName").value.trim();const c=ov.querySelector("#skContent").value.trim();if(!n||!c){note.textContent="✗ name + content required";return}try{await j("/api/skills/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n,description:ov.querySelector("#skDesc").value,content:c})});note.textContent="✓ Skill saved (auto-loads on next session)";toast("Skill saved");ov.querySelector("#skName").value="";ov.querySelector("#skDesc").value="";ov.querySelector("#skContent").value="";refresh()}catch(e){note.textContent="✗ "+e.message}};
+  try{await refresh()}catch(e){showErr(e.message)}
+}
+
+
 async function openSettings(){
   if(!agentId)return;
   const caps=await j("/api/capabilities");
@@ -295,6 +346,7 @@ $("#agentSel").onchange=()=>{agentId=$("#agentSel").value;loadMessages()};
 $("#sendBtn").onclick=send;
 $("#modelBtn").onclick=openModelPicker;
 $("#gearBtn").onclick=openSettings;
+$("#memBtn").onclick=openMemory;
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
 $("#input").addEventListener("input",()=>{const t=$("#input");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,140)+"px"});
 (async function init(){

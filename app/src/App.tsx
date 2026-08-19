@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { api, Agent } from "./api";
 import ChatView from "./components/ChatView";
 import SettingsView from "./components/SettingsView";
+import MemoryView from "./components/MemoryView";
 import ModelPicker from "./components/ModelPicker";
 
-type View = "chat" | "settings";
+type View = "chat" | "settings" | "memory";
 
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -108,6 +109,12 @@ export default function App() {
               Chat
             </button>
             <button
+              className={`nav-tab ${view === "memory" ? "active" : ""}`}
+              onClick={() => setView("memory")}
+            >
+              Memory
+            </button>
+            <button
               className={`nav-tab ${view === "settings" ? "active" : ""}`}
               onClick={() => setView("settings")}
             >
@@ -136,6 +143,7 @@ export default function App() {
             onRefresh={() => refreshAgents()}
           />
         )}
+        {view === "memory" && <MemoryView />}
         {view === "settings" && (
           <SettingsView
             agent={active}

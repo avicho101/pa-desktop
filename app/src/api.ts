@@ -77,7 +77,19 @@ export const api = {
     call<{ data?: unknown }>("bridge_heartbeat", { agent, schedule, prompt }),
   chat: (agent: string, message: string) =>
     call<{ messages: Msg[] }>("bridge_chat", { agent, message }),
+  memoryGet: () => call<{ memory: string; skills: Skill[] }>("memory_get"),
+  memoryAppend: (fact: string) => call<{ line?: string }>("memory_append", { fact }),
+  memoryWrite: (text: string) => call<{ ok?: boolean }>("memory_write", { text }),
+  skillSave: (name: string, description: string, content: string) =>
+    call<{ name?: string }>("skill_save", { name, description, content }),
+  skillDelete: (name: string) => call<{ deleted?: boolean }>("skill_delete", { name }),
   setConnection: (base: string, token: string) =>
     call<null>("set_connection", { base, token }),
   getConnection: () => call<{ base: string; token: string }>("get_connection"),
 };
+
+export interface Skill {
+  name: string;
+  description: string;
+  content: string;
+}

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { CHAT_HTML } from "./chat.html.js";
+import * as memory from "./memory.mjs";
 
 const HARNESS_PATH =
   process.env.PA_DESKTOP_HARNESS ||
@@ -319,6 +320,47 @@ const server = createServer(async (req, res) => {
       return ok(res, { heartbeats: d?.heartbeats ?? d });
     }
 
+    // ---- memory: snapshot / read ----
+    if (req.method === "GET" && p === "/api/memory") {
+      return ok(res, memory.snapshot());
+    }
+
+    // ---- memory: append fact ----
+    if (req.method === "POST" && p === "/api/memory/append") {
+      const body = await readBody(req);
+      if (!body.fact) return bad(res, "fact required");
+      const line = memory.appendMemory(body.fact);
+      return ok(res, { line });
+    }
+
+    // ---- memory: overwrite full MEMORY.md ----
+    if (req.method === "POST" && p === "/api/memory/write") {
+      const body = await readBody(req);
+      if (body.text == null) return bad(res, "text required");
+      memory.writeMemory(body.text);
+      return ok(res, { ok: true });
+    }
+
+    // ---- skills: list ----
+    if (req.method === "GET" && p === "/api/skills") {
+      return ok(res, { skills: memory.listSkills() });
+    }
+
+    // ---- skills: save ----
+    if (req.method === "POST" && p === "/api/skills/save") {
+      const body = await readBody(req);
+      if (!body.name) return bad(res, "name required");
+      const r = memory.saveSkill(body.name, body.description || "", body.content || "");
+      return ok(res, r);
+    }
+
+    // ---- skills: delete ----
+    if (req.method === "POST" && p === "/api/skills/delete") {
+      const body = await readBody(req);
+      if (!body.name) return bad(res, "name required");
+      return ok(res, { deleted: memory.deleteSkill(body.name) });
+    }
+
     return sendJson(res, 404, { ok: false, error: `no route ${req.method} ${p}` });
   } catch (e) {
     console.error(`[bridge:${p}]`, e);
@@ -328,6 +370,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  memory.ensureBootstrap();
   console.log(`pa-desktop bridge listening on http://${HOST}:${PORT}`);
   console.log(`  harness: ${process.env.PA_DESKTOP_HARNESS || "default (~/prime-agent)"}`);
   console.log(`  auth: ${TOKEN ? "token-protected" : "tailnet-only (no token)"}`);

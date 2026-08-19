@@ -174,6 +174,47 @@ async fn bridge_heartbeat(
     .await
 }
 
+// ---------- memory ----------
+#[tauri::command]
+async fn memory_get(state: State<'_, AppState>) -> Result<Value, String> {
+    get(&state, "/api/memory").await
+}
+
+#[tauri::command]
+async fn memory_append(state: State<'_, AppState>, fact: String) -> Result<Value, String> {
+    post(
+        &state,
+        "/api/memory/append",
+        serde_json::json!({ "fact": fact }),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn memory_write(state: State<'_, AppState>, text: String) -> Result<Value, String> {
+    post(&state, "/api/memory/write", serde_json::json!({ "text": text })).await
+}
+
+#[tauri::command]
+async fn skill_save(
+    state: State<'_, AppState>,
+    name: String,
+    description: String,
+    content: String,
+) -> Result<Value, String> {
+    post(
+        &state,
+        "/api/skills/save",
+        serde_json::json!({ "name": name, "description": description, "content": content }),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn skill_delete(state: State<'_, AppState>, name: String) -> Result<Value, String> {
+    post(&state, "/api/skills/delete", serde_json::json!({ "name": name })).await
+}
+
 // Chat with SSE streaming: connect to /api/chat-stream, parse SSE lines, emit
 // "pa://chat-event" to the frontend, return final messages.
 #[tauri::command]
@@ -289,6 +330,11 @@ pub fn run() {
             bridge_rename,
             bridge_heartbeat,
             bridge_chat,
+            memory_get,
+            memory_append,
+            memory_write,
+            skill_save,
+            skill_delete,
             set_connection,
             get_connection,
         ])
