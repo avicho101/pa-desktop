@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { listen } from "@tauri-apps/api/event";
 import { api, Agent, Msg } from "../api";
 import ActivityPanel, { ActivityItem } from "./ActivityPanel";
@@ -243,49 +245,32 @@ function Message({ m, full }: { m: Msg; full: boolean }) {
               })}
             </div>
           )}
-          <div className="msg-text">{renderText(m.text)}</div>
+          <div className="msg-text">
+            <Markdown text={m.text || ""} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Very light markdown: fenced code blocks + inline code. (Full MD would need a
-// dependency; keep the shell minimal like Unsloth.)
-function renderText(text: string) {
-  const blocks = text.split(/```/);
-  const out: React.ReactNode[] = [];
-  blocks.forEach((part, i) => {
-    if (i % 2 === 1) {
-      // code block
-      const [lang, ...rest] = part.split("\n");
-      const code = rest.join("\n");
-      out.push(
-        <pre key={i}>
-          <code>{code}</code>
-          {lang.trim() && <div style={{ fontSize: 10, color: "var(--text-faint)" }}>{lang.trim()}</div>}
-        </pre>
-      );
-    } else {
-      out.push(<span key={i}>{inlineCode(part)}</span>);
-    }
-  });
-  return out;
-}
-
-function inlineCode(text: string): React.ReactNode {
-  const parts = text.split(/`/);
-  const out: React.ReactNode[] = [];
-  parts.forEach((p, i) => {
-    if (i % 2 === 1) {
-      out.push(
-        <code key={i} style={{ fontFamily: "var(--mono)" }}>
-          {p}
-        </code>
-      );
-    } else {
-      out.push(<span key={i}>{p}</span>);
-    }
-  });
-  return out;
+// Rich markdown renderer (LM Studio / Unsloth style): bold, emoji, headers,
+// lists, real GFM tables, fenced code blocks, inline code.
+function Markdown({ text }: { text: string }) {
+  return (
+    <div className="md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
