@@ -23,6 +23,7 @@ select:focus{border-color:var(--ac2)}
 #memBtn:hover,#gearBtn:hover{border-color:var(--ac2);color:var(--txt)}
 #modeBtn{background:var(--bg3);border:1px solid var(--bd);border-radius:999px;color:var(--ac);font-size:11px;padding:5px 10px;cursor:pointer;font-weight:600}
 #modeBtn:hover{border-color:var(--ac2)}
+.toolargs{color:var(--faint);font-size:10.5px;font-family:ui-monospace,monospace;margin-left:4px}
 #messages{flex:1;overflow-y:auto;padding:14px 12px}
 .msg{max-width:88%;margin:0 auto 14px}
 .msg .who{font-size:11px;font-weight:700;color:var(--faint);margin-bottom:3px}
@@ -139,8 +140,16 @@ function renderMessage(m){
   const wrap=document.createElement("div");wrap.className="msg "+(m.role==="user"?"user":"assistant");
   const who=document.createElement("div");who.className="who";who.textContent=m.role==="user"?"You":"pa-desktop";
   wrap.appendChild(who);
-  if(m.thinking&&m.thinking.trim()){const t=document.createElement("div");t.className="thinking";t.textContent="🧠 "+m.thinking;wrap.appendChild(t)}
-  (m.tools||[]).forEach(t=>{const d=document.createElement("div");d.className="tool";d.innerHTML="⚙ <b>"+escapeHtml(t.name)+"</b>";wrap.appendChild(d)});
+  const full = viewMode==="full";
+  // Highlights mode: skip verbose thinking; Full mode: show it
+  if(full&&m.thinking&&m.thinking.trim()){const t=document.createElement("div");t.className="thinking";t.textContent="🧠 "+m.thinking;wrap.appendChild(t)}
+  // tool calls: highlights = compact name chips; full = name + args
+  (m.tools||[]).forEach(t=>{
+    const d=document.createElement("div");d.className="tool";
+    const args = t.arguments && typeof t.arguments==="object" ? Object.keys(t.arguments).join(", ") : (t.arguments||"");
+    d.innerHTML= full ? ("⚙ <b>"+escapeHtml(t.name)+"</b>"+(args?" <span class=\"toolargs\">"+escapeHtml(args)+"</span>":"")) : ("⚙ <b>"+escapeHtml(t.name)+"</b>");
+    wrap.appendChild(d);
+  });
   const b=document.createElement("div");b.className="bubble";b.innerHTML=markdown(m.text||"");
   wrap.appendChild(b);$("#messages").appendChild(wrap);
 }
@@ -358,6 +367,19 @@ $("#sendBtn").onclick=send;
 $("#modelBtn").onclick=openModelPicker;
 $("#gearBtn").onclick=openSettings;
 $("#memBtn").onclick=openMemory;
+// Highlights / Full toggle (persist in localStorage, re-render current view)
+(function(){
+  viewMode = localStorage.getItem("pa_view") || "high";
+  updateModeBtn();
+  $("#modeBtn").onclick=()=>{
+    viewMode = viewMode==="full" ? "high" : "full";
+    localStorage.setItem("pa_view", viewMode);
+    updateModeBtn();
+    if(agentId) loadMessages(); // re-render in the new mode
+  };
+})();
+function updateModeBtn(){const b=$("#modeBtn");if(b)b.textContent= viewMode==="full" ? "◉ Full" : "◉ High";}
+
 $("#input").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}});
 $("#input").addEventListener("input",()=>{const t=$("#input");t.style.height="auto";t.style.height=Math.min(t.scrollHeight,140)+"px"});
 (async function init(){

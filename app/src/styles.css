@@ -184,6 +184,14 @@ body {
   display: inline-flex; gap: 6px; align-items: center;
 }
 .tool-row .tool-name { color: var(--accent); }
+.tool-args { color: var(--text-faint); font-size: 10.5px; font-family: var(--mono); }
+.view-toggle {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--accent); font-size: 11px; font-weight: 600; padding: 5px 11px; cursor: pointer;
+  white-space: nowrap;
+}
+.view-toggle:hover { border-color: var(--accent); }
+.view-toggle.full { color: var(--text); border-color: var(--accent); }
 
 .typing { display: inline-flex; gap: 4px; padding: 6px 0; }
 .typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); animation: blink 1.4s infinite both; }

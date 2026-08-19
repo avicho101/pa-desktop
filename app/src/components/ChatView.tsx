@@ -17,6 +17,9 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"high" | "full">(
+    (localStorage.getItem("pa_view") as "high" | "full") || "high"
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -83,6 +86,17 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
           <span>{agent ? `${agent.status} · ${agent.messages} messages` : "Select or create a session"}</span>
         </div>
         <div className="topbar-actions">
+          <button
+            className={`view-toggle ${viewMode}`}
+            title="Toggle highlights / full view"
+            onClick={() => {
+              const next = viewMode === "full" ? "high" : "full";
+              setViewMode(next);
+              localStorage.setItem("pa_view", next);
+            }}
+          >
+            ◉ {viewMode === "full" ? "Full" : "High"}
+          </button>
           {agent && (
             <>
               <button className="model-chip" onClick={onModelClick} title="Choose model">
@@ -127,7 +141,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
           </div>
         )}
         {messages.map((m, i) => (
-          <Message key={i} m={m} />
+          <Message key={i} m={m} full={viewMode === "full"} />
         ))}
         {sending && (
           <div className="msg-group">
@@ -174,7 +188,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
   );
 }
 
-function Message({ m }: { m: Msg }) {
+function Message({ m, full }: { m: Msg; full: boolean }) {
   const isUser = m.role === "user";
   const label = isUser ? "You" : "pa-desktop";
   return (
@@ -185,15 +199,22 @@ function Message({ m }: { m: Msg }) {
         </div>
         <div className="msg-body">
           <div className="msg-role">{label}</div>
-          {m.thinking && <div className="thinking">{m.thinking}</div>}
+          {full && m.thinking && <div className="thinking">{m.thinking}</div>}
           {(m.tools ?? []).length > 0 && (
             <div style={{ marginBottom: 8 }}>
-              {(m.tools ?? []).map((t, i) => (
-                <div className="tool-row" key={i}>
-                  <span>⚙</span>
-                  <span className="tool-name">{t.name}</span>
-                </div>
-              ))}
+              {(m.tools ?? []).map((t, i) => {
+                const argKeys =
+                  full && t.arguments && typeof t.arguments === "object"
+                    ? Object.keys(t.arguments as object).join(", ")
+                    : null;
+                return (
+                  <div className="tool-row" key={i}>
+                    <span>⚙</span>
+                    <span className="tool-name">{t.name}</span>
+                    {argKeys !== null && <span className="tool-args">{argKeys}</span>}
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="msg-text">{renderText(m.text)}</div>
