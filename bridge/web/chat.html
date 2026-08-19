@@ -185,7 +185,19 @@ async function send(){
       scrollB();
     }
     if(gotAny){rmTyping();renderFresh(fresh)}else{rmTyping();renderMessage({role:"assistant",text:"(no response)"})}
-  }catch(e){rmTyping();renderMessage({role:"assistant",text:"⚠ "+e.message})}
+  }catch(e){
+    // fetch/stream died (mobile "Load failed"): the agent may still be running
+    // in the background. Give it a moment, then pull the latest messages so the
+    // real answer surfaces instead of a dead error bubble.
+    rmTyping();
+    try{
+      await new Promise(r=>setTimeout(r,3000));
+      const d=await j("/api/messages?agent="+encodeURIComponent(agentId)+"&v="+Date.now());
+      const msgs=d.messages||[];
+      if(msgs.length>0){renderFresh(msgs)}
+      else renderMessage({role:"assistant",text:"⚠ Connection dropped ("+e.message+"). Try again."});
+    }catch(e2){renderMessage({role:"assistant",text:"⚠ "+e2.message})}
+  }
   streaming=false;updateComposer();loadAgents(false);
 }
 function renderFresh(msgs){

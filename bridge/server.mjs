@@ -79,13 +79,25 @@ function readBody(req) {
 }
 
 // ---------- message normalization (drop thinking blocks) ----------
+function blockText(b) {
+  if (!b) return "";
+  if (typeof b.text === "string") return b.text;
+  if (typeof b.thinking === "string") return "";
+  if (b.type === "toolCall") {
+    // arguments is an object -> show it as a compact tool summary
+    return b.arguments && typeof b.arguments === "object"
+      ? `${b.name || "tool"}(${Object.keys(b.arguments).join(", ")})`
+      : String(b.arguments ?? "");
+  }
+  return "";
+}
 function normalizeMessages(messages) {
   return (messages || []).map((m) => {
     const content = m.content;
     if (typeof content === "string") return { role: m.role, text: content, timestamp: m.timestamp };
     const blocks = Array.isArray(content) ? content : [];
     const text = blocks.filter((b) => b && b.type !== "thinking" && b.type !== "image")
-      .map((b) => b.text ?? b.arguments ?? "").join("\n");
+      .map(blockText).filter(Boolean).join("\n");
     const thinking = blocks.filter((b) => b && b.type === "thinking")
       .map((b) => b.thinking ?? b.text ?? "").join("\n");
     const tools = blocks.filter((b) => b && b.type === "toolCall");
@@ -268,17 +280,28 @@ const server = createServer(async (req, res) => {
           "Cache-Control": "no-store",
           "Connection": "keep-alive",
           "Access-Control-Allow-Origin": "*",
+          "X-Accel-Buffering": "no",
         });
         sse(res, "start", {});
         const run = async () => {
-          await dreq({
-            type: "prompt_and_wait", activeSessionId: body.agent,
-            message: body.message, queueIfBusy: true, streamingBehavior: "followUp",
-          }, 600000);
-          const after = await dreq({ type: "get_messages", activeSessionId: body.agent }, 30000);
-          const newMsgs = normalizeMessages(after?.messages).slice(beforeCount);
-          sse(res, "messages", { messages: newMsgs });
-          sse(res, "done", {});
+          // Keepalive: prompt_and_wait blocks for minutes with no SSE output,
+          // and mobile proxies/browsers drop idle connections -> "Load failed".
+          // Emit a comment heartbeat so the socket stays alive.
+          const heartbeat = setInterval(() => {
+            try { res.write(": ping\n\n"); } catch {}
+          }, 10000);
+          try {
+            await dreq({
+              type: "prompt_and_wait", activeSessionId: body.agent,
+              message: body.message, queueIfBusy: true, streamingBehavior: "followUp",
+            }, 600000);
+            const after = await dreq({ type: "get_messages", activeSessionId: body.agent }, 30000);
+            const newMsgs = normalizeMessages(after?.messages).slice(beforeCount);
+            sse(res, "messages", { messages: newMsgs });
+            sse(res, "done", {});
+          } finally {
+            clearInterval(heartbeat);
+          }
           res.end();
         };
         run().catch((e) => { sse(res, "error", { error: String(e.message) }); res.end(); });
