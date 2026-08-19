@@ -83,6 +83,18 @@ export const api = {
   skillSave: (name: string, description: string, content: string) =>
     call<{ name?: string }>("skill_save", { name, description, content }),
   skillDelete: (name: string) => call<{ deleted?: boolean }>("skill_delete", { name }),
+  // local control (this machine)
+  localLs: (path: string) => call<{ path: string; entries: FsEntry[] }>("local_ls", { path }),
+  localRead: (path: string) => call<{ path: string; content: string; binary: boolean; size: number }>("local_read", { path }),
+  localWrite: (path: string, content: string) => call<{ ok?: boolean; bytes?: number }>("local_write", { path, content }),
+  localMkdir: (path: string) => call<{ ok?: boolean }>("local_mkdir", { path }),
+  localRm: (path: string, recursive: boolean) => call<{ ok?: boolean }>("local_rm", { path, recursive }),
+  localExec: (command: string, cwd?: string) =>
+    call<{ ok: boolean; code: number | null; output: string; stdout: string; stderr: string }>("local_exec", { command, cwd }),
+  localServerStart: (port?: number, token?: string) =>
+    call<{ running: boolean; port: number; token?: string }>("local_server_start", { port, token }),
+  localServerStatus: () => call<{ running: boolean; port: number; token?: string }>("local_server_status"),
+  localServerStop: () => call<{ running: boolean }>("local_server_stop"),
   setConnection: (base: string, token: string) =>
     call<null>("set_connection", { base, token }),
   getConnection: () => call<{ base: string; token: string }>("get_connection"),
@@ -92,4 +104,11 @@ export interface Skill {
   name: string;
   description: string;
   content: string;
+}
+
+export interface FsEntry {
+  name: string;
+  isDir: boolean;
+  isFile: boolean;
+  isSymlink: boolean;
 }

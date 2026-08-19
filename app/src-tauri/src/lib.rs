@@ -25,6 +25,7 @@ impl Conn {
 
 struct AppState {
     conn: Mutex<Conn>,
+    local_server: Mutex<LocalServerState>,
 }
 
 // ---------- helpers ----------
@@ -174,7 +175,264 @@ async fn bridge_heartbeat(
     .await
 }
 
-// ---------- memory ----------
+// ---------- local control: filesystem + commands on THIS machine ----------
+// These run on the machine where pa-desktop is installed (not the VPS). The
+// agent reaches them via the embedded local control server (see setup_local_server).
+
+fn local_resolve(path: String) -> std::path::PathBuf {
+    let p = std::path::PathBuf::from(&path);
+    if p.is_absolute() {
+        p
+    } else {
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/")).join(p)
+    }
+}
+
+#[tauri::command]
+fn local_ls(path: String) -> Result<Value, String> {
+    let p = local_resolve(path);
+    let mut entries = Vec::new();
+    for e in std::fs::read_dir(&p).map_err(|e| e.to_string())? {
+        let e = e.map_err(|e| e.to_string())?;
+        let name = e.file_name().to_string_lossy().to_string();
+        let ft = e.file_type().map_err(|e| e.to_string())?;
+        entries.push(serde_json::json!({
+            "name": name,
+            "isDir": ft.is_dir(),
+            "isFile": ft.is_file(),
+            "isSymlink": ft.is_symlink(),
+        }));
+    }
+    entries.sort_by(|a, b| {
+        let ad = a["isDir"].as_bool().unwrap_or(false);
+        let bd = b["isDir"].as_bool().unwrap_or(false);
+        bd.cmp(&ad).then_with(|| a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or("")))
+    });
+    Ok(serde_json::json!({ "path": p.to_string_lossy(), "entries": entries }))
+}
+
+#[tauri::command]
+fn local_read(path: String) -> Result<Value, String> {
+    let p = local_resolve(path.clone());
+    if p.is_dir() {
+        return local_ls(path);
+    }
+    let data = std::fs::read(&p).map_err(|e| e.to_string())?;
+    // binary guard: cap text, else base64
+    let text = String::from_utf8_lossy(&data);
+    let is_binary = data.iter().take(4096).any(|&b| b == 0);
+    Ok(serde_json::json!({
+        "path": p.to_string_lossy(),
+        "content": if is_binary { String::new() } else { text.to_string() },
+        "binary": is_binary,
+        "size": data.len(),
+    }))
+}
+
+#[tauri::command]
+fn local_write(path: String, content: String) -> Result<Value, String> {
+    let p = local_resolve(path);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let len = content.len();
+    std::fs::write(&p, content).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "ok": true, "path": p.to_string_lossy(), "bytes": len }))
+}
+
+#[tauri::command]
+fn local_mkdir(path: String) -> Result<Value, String> {
+    let p = local_resolve(path);
+    std::fs::create_dir_all(&p).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "ok": true, "path": p.to_string_lossy() }))
+}
+
+#[tauri::command]
+fn local_rm(path: String, recursive: bool) -> Result<Value, String> {
+    let p = local_resolve(path);
+    let meta = std::fs::metadata(&p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        if !recursive {
+            return Err("is a directory — pass recursive=true".into());
+        }
+        std::fs::remove_dir_all(&p).map_err(|e| e.to_string())?;
+    } else {
+        std::fs::remove_file(&p).map_err(|e| e.to_string())?;
+    }
+    Ok(serde_json::json!({ "ok": true, "path": p.to_string_lossy() }))
+}
+
+/// Run a shell command on this machine. Returns combined stdout+stderr.
+#[tauri::command]
+fn local_exec(command: String, cwd: Option<String>) -> Result<Value, String> {
+    let shell = if cfg!(target_os = "windows") { "cmd" } else { "/bin/sh" };
+    let mut cmd = std::process::Command::new(shell);
+    if cfg!(target_os = "windows") {
+        cmd.arg("/C").arg(&command);
+    } else {
+        cmd.arg("-c").arg(&command);
+    }
+    if let Some(c) = cwd {
+        cmd.current_dir(local_resolve(c));
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    Ok(serde_json::json!({
+        "ok": out.status.success(),
+        "code": out.status.code(),
+        "stdout": stdout,
+        "stderr": stderr,
+        "output": format!("{}{}{}", stdout, if !stdout.is_empty() && !stderr.is_empty() { "\n" } else { "" }, stderr),
+    }))
+}
+
+// ---------- embedded local control server ----------
+// Lets the VPS agent (or any tailnet device) reach THIS machine's filesystem and
+// shell over HTTP. Token-protected; binds to the local Tailscale IP (tailnet only).
+// Shared with the Tauri command surface via a mutex so the app can start/stop it.
+use std::io::{Read, Write};
+use std::sync::Arc;
+
+pub struct LocalServerState {
+    pub running: bool,
+    pub port: u16,
+    pub token: String,
+    pub listener: Option<Arc<Mutex<std::net::TcpListener>>>,
+}
+
+impl Default for LocalServerState {
+    fn default() -> Self {
+        LocalServerState { running: false, port: 8799, token: String::new(), listener: None }
+    }
+}
+
+fn handle_local_conn(mut stream: std::net::TcpStream, token: &str) {
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 1024];
+    loop {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&tmp[..n]);
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+                if buf.len() > 1_000_000 {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let req = String::from_utf8_lossy(&buf).to_string();
+    let mut respond = |code: u16, ctype: &str, body: String| {
+        let _ = stream.write_all(
+            format!("HTTP/1.1 {code} {}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                if code == 200 { "OK" } else { "Error" }, body.len(), body).as_bytes());
+        let _ = stream.flush();
+    };
+    // parse request line: METHOD PATH HTTP
+    let mut lines = req.lines();
+    let reqline = lines.next().unwrap_or("").to_string();
+    let mut parts = reqline.split_whitespace();
+    let method = parts.next().unwrap_or("").to_string();
+    let path = parts.next().unwrap_or("/").to_string();
+    // auth: ?token=... or Authorization: Bearer
+    let authed = path.contains(&format!("token={}", token)) || req.contains(&format!("Bearer {}", token)) || token.is_empty();
+    if !authed {
+        return respond(401, "application/json", "{\"ok\":false,\"error\":\"unauthorized\"}".into());
+    }
+    let (p, q) = match path.split_once('?') {
+        Some((a, b)) => (a.to_string(), b.to_string()),
+        None => (path.clone(), String::new()),
+    };
+    let qv = |k: &str| -> Option<String> {
+        q.split('&').find_map(|kv| {
+            let mut it = kv.splitn(2, '=');
+            if it.next() == Some(k) { Some(it.next().unwrap_or("").to_string()) } else { None }
+        })
+    };
+    match (method.as_str(), p.as_str()) {
+        ("GET", "/") => respond(200, "text/plain", format!("pa-desktop local control\nfs: /fs?path=..&token={}\nexec: /exec?cmd=..&token={}\n", token, token)),
+        ("GET", "/fs") => {
+            let path = qv("path").unwrap_or_else(|| "/".into());
+            match local_ls(path) {
+                Ok(v) => respond(200, "application/json", v.to_string()),
+                Err(e) => respond(400, "application/json", format!("{{\"ok\":false,\"error\":{}}}", serde_json::json!(e))),
+            }
+        }
+        ("GET", "/read") => {
+            let path = qv("path").unwrap_or_default();
+            match local_read(path) {
+                Ok(v) => respond(200, "application/json", v.to_string()),
+                Err(e) => respond(400, "application/json", format!("{{\"ok\":false,\"error\":{}}}", serde_json::json!(e))),
+            }
+        }
+        ("POST", "/exec") => {
+            let cmd = qv("cmd").unwrap_or_default();
+            let cwd = qv("cwd");
+            match local_exec(cmd, cwd) {
+                Ok(v) => respond(200, "application/json", v.to_string()),
+                Err(e) => respond(400, "application/json", format!("{{\"ok\":false,\"error\":{}}}", serde_json::json!(e))),
+            }
+        }
+        _ => respond(404, "application/json", "{\"ok\":false,\"error\":\"no route\"}".into()),
+    }
+}
+
+fn spawn_local_server(state: Arc<LocalServerState>) {
+    let token = state.token.clone();
+    let listener = match state.listener.as_ref() {
+        Some(l) => l.clone(),
+        None => return,
+    };
+    std::thread::spawn(move || {
+        loop {
+            match listener.lock().unwrap().accept() {
+                Ok((stream, _)) => {
+                    let token = token.clone();
+                    std::thread::spawn(move || handle_local_conn(stream, &token));
+                }
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn local_server_start(state: tauri::State<'_, AppState>, port: Option<u16>, token: Option<String>) -> Result<Value, String> {
+    let mut ls = state.local_server.lock().map_err(|e| e.to_string())?;
+    if ls.running {
+        return Ok(serde_json::json!({ "running": true, "port": ls.port }));
+    }
+    ls.port = port.unwrap_or(8799);
+    ls.token = token.unwrap_or_default();
+    let bind = format!("0.0.0.0:{}", ls.port);
+    let listener = std::net::TcpListener::bind(&bind).map_err(|e| e.to_string())?;
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    ls.listener = Some(Arc::new(Mutex::new(listener)));
+    ls.running = true;
+    let arc = Arc::new(LocalServerState { running: true, port: ls.port, token: ls.token.clone(), listener: ls.listener.clone() });
+    spawn_local_server(arc);
+    Ok(serde_json::json!({ "running": true, "port": ls.port, "token": ls.token }))
+}
+
+#[tauri::command]
+fn local_server_status(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    let ls = state.local_server.lock().map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "running": ls.running, "port": ls.port, "token": ls.token }))
+}
+
+#[tauri::command]
+fn local_server_stop(state: tauri::State<'_, AppState>) -> Result<Value, String> {
+    let mut ls = state.local_server.lock().map_err(|e| e.to_string())?;
+    ls.running = false;
+    ls.listener = None;
+    Ok(serde_json::json!({ "running": false }))
+}
+
+
 #[tauri::command]
 async fn memory_get(state: State<'_, AppState>) -> Result<Value, String> {
     get(&state, "/api/memory").await
@@ -321,6 +579,7 @@ pub fn run() {
                 std::env::var("PA_DESKTOP_BASE").unwrap_or_else(|_| DEFAULT_BASE.to_string()),
                 std::env::var("PA_DESKTOP_TOKEN").unwrap_or_default(),
             )),
+            local_server: Mutex::new(LocalServerState::default()),
         })
         .invoke_handler(tauri::generate_handler![
             bridge_capabilities,
@@ -339,6 +598,15 @@ pub fn run() {
             memory_write,
             skill_save,
             skill_delete,
+            local_ls,
+            local_read,
+            local_write,
+            local_mkdir,
+            local_rm,
+            local_exec,
+            local_server_start,
+            local_server_status,
+            local_server_stop,
             set_connection,
             get_connection,
         ])

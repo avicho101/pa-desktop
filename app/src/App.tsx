@@ -3,9 +3,10 @@ import { api, Agent } from "./api";
 import ChatView from "./components/ChatView";
 import SettingsView from "./components/SettingsView";
 import MemoryView from "./components/MemoryView";
+import LocalControlView from "./components/LocalControlView";
 import ModelPicker from "./components/ModelPicker";
 
-type View = "chat" | "settings" | "memory";
+type View = "chat" | "settings" | "memory" | "local";
 
 export default function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -115,6 +116,12 @@ export default function App() {
               Memory
             </button>
             <button
+              className={`nav-tab ${view === "local" ? "active" : ""}`}
+              onClick={() => setView("local")}
+            >
+              Local
+            </button>
+            <button
               className={`nav-tab ${view === "settings" ? "active" : ""}`}
               onClick={() => setView("settings")}
             >
@@ -144,6 +151,7 @@ export default function App() {
           />
         )}
         {view === "memory" && <MemoryView />}
+        {view === "local" && <LocalControlView />}
         {view === "settings" && (
           <SettingsView
             agent={active}
