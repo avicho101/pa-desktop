@@ -16,6 +16,14 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(
+    (localStorage.getItem("pa_theme") as "dark" | "light") || "dark"
+  );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("pa_theme", theme);
+  }, [theme]);
 
   async function refreshAgents(select?: string) {
     try {
@@ -102,6 +110,13 @@ export default function App() {
             <span className={`dot ${connOk ? "dot-on" : "dot-off"}`} />
             {connOk ? "Connected to VPS daemon" : "Disconnected"}
           </div>
+          <button
+            className="theme-toggle"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title="Toggle theme"
+          >
+            {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+          </button>
           <div className="nav-tabs">
             <button
               className={`nav-tab ${view === "chat" ? "active" : ""}`}

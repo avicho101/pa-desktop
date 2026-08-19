@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, Agent, Msg } from "../api";
+import ActivityPanel, { ActivityItem } from "./ActivityPanel";
 
 interface Props {
   agent: Agent | null;
@@ -20,6 +21,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
   const [viewMode, setViewMode] = useState<"high" | "full">(
     (localStorage.getItem("pa_view") as "high" | "full") || "high"
   );
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -45,6 +47,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
     if (!text || !agent || sending) return;
     setInput("");
     setSending(true);
+    setActivity([]);
     // snapshot of the transcript BEFORE this prompt, so live events and the final
     // result both anchor to the same base (history preserved)
     const base = messagesRef.current;
@@ -59,6 +62,8 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
         // payload is the full running tail INCLUDING the user message -> render
         // base + tail (no separate userMsg, avoids duplication)
         setMessages([...base, ...ev.payload.messages!]);
+        // derive live activity items (tool calls / thinking) for the panel
+        setActivity(buildActivity(ev.payload.messages!));
       });
       const r = await api.chat(agent.id, text);
       setMessages([...base, ...r.messages]);
@@ -161,6 +166,8 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
         <div ref={bottomRef} />
       </div>
 
+      {sending && <ActivityPanel items={activity} />}
+
       <div className="composer-wrap">
         <div className="composer">
           <textarea
@@ -186,6 +193,25 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
       </div>
     </div>
   );
+}
+
+// Build the streaming activity items (tool calls + thinking) from a message tail.
+function buildActivity(msgs: Msg[]): ActivityItem[] {
+  const items: ActivityItem[] = [];
+  for (const m of msgs) {
+    if (m.role !== "assistant") continue;
+    if (m.thinking && m.thinking.trim()) {
+      items.push({ type: "thinking", text: m.thinking });
+    }
+    for (const t of m.tools ?? []) {
+      const args =
+        t.arguments && typeof t.arguments === "object"
+          ? Object.keys(t.arguments as object).join(", ")
+          : undefined;
+      items.push({ type: "tool", name: t.name, args });
+    }
+  }
+  return items;
 }
 
 function Message({ m, full }: { m: Msg; full: boolean }) {
