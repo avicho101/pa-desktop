@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
-import { CHAT_HTML } from "./chat.html.js";
+import { readFileSync } from "node:fs";
 import * as memory from "./memory.mjs";
 
 const HARNESS_PATH =
@@ -107,13 +107,14 @@ const server = createServer(async (req, res) => {
     if (req.method === "OPTIONS") return sendJson(res, 204, {});
     if (!authOk(req)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
 
-    // ---- root: full chat app (single-file) ----
+    // ---- root: full chat app (plain HTML served fresh per request) ----
     if (req.method === "GET" && p === "/") {
+      const html = readFileSync(new URL("./web/chat.html", import.meta.url), "utf8");
       res.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
       });
-      res.end(CHAT_HTML);
+      res.end(html);
       return;
     }
 

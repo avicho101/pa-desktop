@@ -1,8 +1,4 @@
-// chat.html.js — single-file mobile/desktop web chat UI served at the bridge root.
-// Talks only to the bridge's own /api/* endpoints (same daemon as the desktop app).
-// Includes: chat + tool calls, model picker (grouped by provider, searchable, badges),
-// and a Settings panel wired to real daemon commands.
-export const CHAT_HTML = `<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -151,11 +147,11 @@ function scrollB(){$("#messages").scrollTop=$("#messages").scrollHeight}
 function escapeHtml(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
 function markdown(t){
   t=escapeHtml(t);
-  t=t.replace(/~~~([\\s\\S]*?)~~~/g,'<pre><code>$1</code></pre>');
-  t=t.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g,'<pre><code>$1</code></pre>');
-  t=t.replace(/\`([^\`\n]+)\`/g,'<code>$1</code>');
-  t=t.replace(/\\*\\*([^*]+)\\*\\*/g,'<b>$1</b>');
-  t=t.replace(/\\*([^*]+)\\*/g,'<i>$1</i>');
+  t=t.replace(/~~~([\s\S]*?)~~~/g,'<pre><code>$1</code></pre>');
+  t=t.replace(/```([\s\S]*?)```/g,'<pre><code>$1</code></pre>');
+  t=t.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  t=t.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  t=t.replace(/\*([^*]+)\*/g,'<i>$1</i>');
   return t;
 }
 async function loadMessages(){
@@ -175,9 +171,9 @@ async function send(){
     while(true){
       const {done,value}=await reader.read();if(done)break;
       buf+=dec.decode(value,{stream:true});
-      let i;while((i=buf.indexOf("\\n\\n"))>=0){
+      let i;while((i=buf.indexOf("\n\n"))>=0){
         const block=buf.slice(0,i);buf=buf.slice(i+2);
-        for(const line of block.split("\\n")){
+        for(const line of block.split("\n")){
           if(line.startsWith("data:")){
             const data=line.slice(5).trim();if(!data||data==="{}")continue;
             let ev;try{ev=JSON.parse(data)}catch{continue}
@@ -355,4 +351,3 @@ $("#input").addEventListener("input",()=>{const t=$("#input");t.style.height="au
 </script>
 </body>
 </html>
-`;
