@@ -106,6 +106,31 @@ const server = createServer(async (req, res) => {
     if (req.method === "OPTIONS") return sendJson(res, 204, {});
     if (!authOk(req)) return sendJson(res, 401, { ok: false, error: "unauthorized" });
 
+    // ---- root: friendly status page ----
+    if (req.method === "GET" && p === "/") {
+      res.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+      });
+      res.end(`<!doctype html><html><head><meta charset="utf-8"><title>pa-desktop bridge</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0d0f14;color:#e7eaf3;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{background:#181c25;border:1px solid #232936;border-radius:12px;padding:36px 44px;max-width:520px;text-align:center}
+h1{font-size:20px;margin:0 0 6px;letter-spacing:-0.2px}
+p{color:#9aa3b5;font-size:14px;margin:4px 0}
+.badge{display:inline-block;margin-top:16px;padding:6px 14px;border-radius:999px;background:rgba(52,211,153,.15);color:#34d399;font-size:13px;font-weight:600}
+code{background:#0d0f14;border:1px solid #232936;border-radius:6px;padding:2px 7px;font-size:13px;color:#8ab4ff}
+a{color:#8ab4ff}
+</style></head><body><div class="card">
+<h1>✅ pa-desktop bridge</h1>
+<p>Connected to the <b>prime-agent</b> daemon on this VPS.</p>
+<p>API root: <code>/api/agents</code> · <code>/api/capabilities</code> · <code>/api/chat-stream</code></p>
+<p><a href="/api/capabilities">View capabilities</a></p>
+<div class="badge">● ONLINE — Tailscale only</div>
+</div></body></html>`);
+      return;
+    }
+
     // ---- status / capabilities ----
     if (req.method === "GET" && p === "/api/capabilities") {
       return ok(res, {
