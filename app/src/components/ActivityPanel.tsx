@@ -12,13 +12,17 @@ export interface ActivityItem {
  * (Claude Desktop / Cursor / Codex): a slim header row with a spinner, the
  * current operation, and a chevron; expands to stream each tool call / thinking
  * block live; collapses to a single line. Pinned above the composer while a
- * run is in flight.
+ * run is in flight, then stays (collapsed) with the tool trail for the run.
  */
 export default function ActivityPanel({
   items,
+  showThinking = true,
+  done = false,
   collapsed: initialCollapsed,
 }: {
   items: ActivityItem[];
+  showThinking?: boolean;
+  done?: boolean;
   collapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(
@@ -29,11 +33,16 @@ export default function ActivityPanel({
     localStorage.setItem("pa_activity_collapsed", collapsed ? "1" : "0");
   }, [collapsed]);
 
-  // Auto-expand when a new tool starts if the user hasn't explicitly collapsed
+  // Auto-expand when a run starts (new tools streaming), unless user collapsed
   useEffect(() => {
     if (localStorage.getItem("pa_activity_collapsed") === "1") return;
     if (items.some((i) => i.type === "tool")) setCollapsed(false);
   }, [items]);
+
+  // Auto-collapse when the run finishes so it doesn't crowd the chat
+  useEffect(() => {
+    if (done) setCollapsed(true);
+  }, [done]);
 
   const lastTool = [...items].reverse().find((i) => i.type === "tool");
   const toolCount = items.filter((i) => i.type === "tool").length;
@@ -41,10 +50,12 @@ export default function ActivityPanel({
   return (
     <div className={`activity ${collapsed ? "collapsed" : ""}`}>
       <div className="activity-head" onClick={() => setCollapsed((c) => !c)}>
-        <span className="spinner" />
+        <span className={done ? "activity-dot" : "spinner"} />
         <span className="activity-label">
           {toolCount > 0
             ? `${lastTool?.name ?? "Working"}${collapsed && toolCount > 1 ? ` · +${toolCount - 1} more` : ""}`
+            : done
+            ? "Completed"
             : "Working…"}
         </span>
         <span className="activity-chev">{collapsed ? "▸" : "▾"}</span>
@@ -61,7 +72,7 @@ export default function ActivityPanel({
                 </div>
               );
             }
-            if (it.type === "thinking" && it.text) {
+            if (showThinking && it.type === "thinking" && it.text) {
               return (
                 <div className="activity-thinking" key={i}>
                   🧠 {it.text}

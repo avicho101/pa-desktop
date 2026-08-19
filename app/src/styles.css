@@ -280,6 +280,11 @@ body {
   cursor: pointer; user-select: none;
 }
 .activity-head:hover { background: var(--bg); }
+.activity-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  flex-shrink: 0; box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+}
+[data-theme="light"] .activity-dot { box-shadow: 0 0 6px rgba(13, 159, 110, 0.5); }
 .activity-label {
   flex: 1; font-size: 12px; font-weight: 600; color: var(--text-dim);
   font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

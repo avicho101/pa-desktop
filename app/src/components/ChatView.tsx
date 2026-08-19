@@ -30,9 +30,11 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
   useEffect(() => {
     if (!agent) {
       setMessages([]);
+      setActivity([]);
       return;
     }
     setLoading(true);
+    setActivity([]);
     api
       .messages(agent.id)
       .then((r) => setMessages(r.messages))
@@ -69,6 +71,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
       });
       const r = await api.chat(agent.id, text);
       setMessages([...base, ...r.messages]);
+      setActivity(buildActivity(r.messages));
       onRefresh();
     } catch (e) {
       setMessages([...base, userMsg, { role: "assistant", text: `⚠ Error: ${String(e)}` }]);
@@ -95,7 +98,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
         <div className="topbar-actions">
           <button
             className={`view-toggle ${viewMode}`}
-            title="Toggle highlights / full view"
+            title="High: compact tool chips only · Full: also show thinking"
             onClick={() => {
               const next = viewMode === "full" ? "high" : "full";
               setViewMode(next);
@@ -148,7 +151,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
           </div>
         )}
         {messages.map((m, i) => (
-          <Message key={i} m={m} full={viewMode === "full"} />
+          <Message key={i} m={m} />
         ))}
         {sending && (
           <div className="msg-group">
@@ -168,7 +171,13 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
         <div ref={bottomRef} />
       </div>
 
-      {sending && <ActivityPanel items={activity} />}
+      {(sending || activity.length > 0) && (
+        <ActivityPanel
+          items={activity}
+          showThinking={viewMode === "full"}
+          done={!sending}
+        />
+      )}
 
       <div className="composer-wrap">
         <div className="composer">
@@ -216,7 +225,7 @@ function buildActivity(msgs: Msg[]): ActivityItem[] {
   return items;
 }
 
-function Message({ m, full }: { m: Msg; full: boolean }) {
+function Message({ m }: { m: Msg }) {
   const isUser = m.role === "user";
   const label = isUser ? "You" : "pa-desktop";
   return (
@@ -227,24 +236,6 @@ function Message({ m, full }: { m: Msg; full: boolean }) {
         </div>
         <div className="msg-body">
           <div className="msg-role">{label}</div>
-          {full && m.thinking && <div className="thinking">{m.thinking}</div>}
-          {(m.tools ?? []).length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              {(m.tools ?? []).map((t, i) => {
-                const argKeys =
-                  full && t.arguments && typeof t.arguments === "object"
-                    ? Object.keys(t.arguments as object).join(", ")
-                    : null;
-                return (
-                  <div className="tool-row" key={i}>
-                    <span>⚙</span>
-                    <span className="tool-name">{t.name}</span>
-                    {argKeys !== null && <span className="tool-args">{argKeys}</span>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <div className="msg-text">
             <Markdown text={m.text || ""} />
           </div>
