@@ -290,17 +290,32 @@ const server = createServer(async (req, res) => {
           const heartbeat = setInterval(() => {
             try { res.write(": ping\n\n"); } catch {}
           }, 10000);
+          // Live activity: poll get_messages during the wait and stream the full
+          // running tail (messages since the user's prompt) as it grows, so the
+          // UI shows the agent working instead of dots. Sending the whole tail
+          // each time is idempotent for the frontend (replace, not append).
+          const poller = setInterval(async () => {
+            try {
+              const live = await dreq({ type: "get_messages", activeSessionId: body.agent }, 30000);
+              const all = normalizeMessages(live?.messages) || [];
+              if (all.length > beforeCount) {
+                sse(res, "messages", { messages: all.slice(beforeCount) });
+              }
+            } catch {}
+          }, 1200);
           try {
             await dreq({
               type: "prompt_and_wait", activeSessionId: body.agent,
               message: body.message, queueIfBusy: true, streamingBehavior: "followUp",
             }, 600000);
+            clearInterval(poller);
             const after = await dreq({ type: "get_messages", activeSessionId: body.agent }, 30000);
             const newMsgs = normalizeMessages(after?.messages).slice(beforeCount);
             sse(res, "messages", { messages: newMsgs });
             sse(res, "done", {});
           } finally {
             clearInterval(heartbeat);
+            clearInterval(poller);
           }
           res.end();
         };

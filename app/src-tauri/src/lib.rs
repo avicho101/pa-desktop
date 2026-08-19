@@ -265,15 +265,19 @@ async fn bridge_chat(
                     }
                     if let Ok(v) = serde_json::from_str::<Value>(data) {
                         if let Some(msgs) = v.get("messages").and_then(Value::as_array) {
-                            collected.extend(msgs.iter().cloned());
+                            if !msgs.is_empty() {
+                                collected.extend(msgs.iter().cloned());
+                                // Stream live activity to the frontend so the UI
+                                // shows tool calls/thinking/text as they happen.
+                                let _ = app.emit(
+                                    "pa://chat-event",
+                                    serde_json::json!({ "type": "messages", "messages": msgs }),
+                                );
+                            }
                         }
                     }
                 }
             }
-            let _ = app.emit(
-                "pa://chat-event",
-                serde_json::json!({ "type": "progress", "collected": collected.len() }),
-            );
         }
     }
     Ok(serde_json::json!({ "messages": collected }))

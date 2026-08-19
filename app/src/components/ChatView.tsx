@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { api, Agent, Msg } from "../api";
 
 interface Props {
@@ -10,6 +11,9 @@ interface Props {
 
 export default function ChatView({ agent, onModelClick, onRename, onRefresh }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
+  const messagesRef = useRef<Msg[]>([]);
+  // keep ref in sync so send() can snapshot the pre-prompt transcript
+  messagesRef.current = messages;
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -38,25 +42,28 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
     if (!text || !agent || sending) return;
     setInput("");
     setSending(true);
-    // optimistic user bubble
-    setMessages((prev) => [...prev, { role: "user", text }]);
+    // snapshot of the transcript BEFORE this prompt, so live events and the final
+    // result both anchor to the same base (history preserved)
+    const base = messagesRef.current;
+    const userMsg: Msg = { role: "user", text };
+    setMessages([...base, userMsg]);
+    // live activity: stream assistant messages (tool calls, thinking, text) as
+    // they happen, replacing the typing dots in real time.
+    let unlisten: (() => void) | undefined;
     try {
-      const r = await api.chat(agent.id, text);
-      setMessages((prev) => {
-        const next = [...prev];
-        // drop the optimistic user bubble then append full transcript
-        const trimmed = next.filter(
-          (m) => !(m.role === "user" && m.text === text && m.timestamp === undefined)
-        );
-        return [...trimmed, ...r.messages];
+      unlisten = await listen<{ type: string; messages?: Msg[] }>("pa://chat-event", (ev) => {
+        if (ev.payload.type !== "messages" || !ev.payload.messages) return;
+        // payload is the full running tail INCLUDING the user message -> render
+        // base + tail (no separate userMsg, avoids duplication)
+        setMessages([...base, ...ev.payload.messages!]);
       });
+      const r = await api.chat(agent.id, text);
+      setMessages([...base, ...r.messages]);
       onRefresh();
     } catch (e) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: `⚠ Error: ${String(e)}` },
-      ]);
+      setMessages([...base, userMsg, { role: "assistant", text: `⚠ Error: ${String(e)}` }]);
     } finally {
+      unlisten?.();
       setSending(false);
     }
   }, [input, agent, sending, onRefresh]);
