@@ -1,6 +1,25 @@
 @echo off
-REM pa-desktop bridge + app build/verify helper (Linux/macOS/WSL: use build.sh)
+REM pa-desktop Windows build script
+REM Produces the .exe / NSIS installer under app\src-tauri\target\release\bundle\
 setlocal
-echo [pa-desktop] This is a Tauri v2 + React app. Use npm/cargo directly:
-echo   npm install && npm run tauri dev   (in app/)
-echo   cd app/src-tauri && cargo check
+cd /d "%~dp0app"
+
+echo [1/3] Frontend build (tsc + vite)...
+call npm run build || goto :err
+
+echo [2/3] Cargo check...
+cd src-tauri
+call cargo check 2>&1 || goto :err
+cd ..
+
+echo [3/3] Tauri release build (.exe)...
+call npm run tauri build 2>&1 || goto :err
+
+echo.
+echo DONE. Installer is in app\src-tauri\target\release\bundle\msi\ and \nsis\
+goto :eof
+
+:err
+echo.
+echo BUILD FAILED.
+exit /b 1
