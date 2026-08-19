@@ -92,7 +92,7 @@ export default function ChatView({ agent, onModelClick, onRename, onRefresh }: P
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div className="topbar">
         <div className="topbar-title">
-          <h2>{agent?.name || agent?.id || "No session"}</h2>
+          <h2>{agent ? (agent.name || (agent.topic ? (agent.topic.length > 60 ? agent.topic.slice(0, 60) + "…" : agent.topic) : agent.id)) : "No session"}</h2>
           <span>{agent ? `${agent.status} · ${agent.messages} messages` : "Select or create a session"}</span>
         </div>
         <div className="topbar-actions">

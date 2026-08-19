@@ -158,6 +158,7 @@ const server = createServer(async (req, res) => {
         agents: sessions.map((s) => ({
           id: s.activeSessionId ?? s.id,
           name: s.name || "",
+          topic: s.firstMessage || "",
           model: s.model?.name || s.model?.id || "",
           status: s.status ?? s.activity ?? "",
           messages: s.messageCount ?? 0,
@@ -173,6 +174,7 @@ const server = createServer(async (req, res) => {
       return ok(res, {
         agents: sessions.map((s) => ({
           id: s.activeSessionId ?? s.id, name: s.name || "",
+          topic: s.firstMessage || "",
           model: s.model?.name || s.model?.id || "",
           status: s.status ?? s.activity ?? "", messages: s.messageCount ?? 0,
         })),

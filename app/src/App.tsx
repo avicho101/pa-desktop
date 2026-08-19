@@ -60,6 +60,13 @@ export default function App() {
 
   const active = agents.find((a) => a.id === activeId) ?? null;
 
+  function sessionTitle(a: Agent): string {
+    if (a.name) return a.name;
+    if (a.topic) return a.topic.length > 60 ? a.topic.slice(0, 60) + "…" : a.topic;
+    if (a.model) return a.model;
+    return "Untitled";
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -85,7 +92,7 @@ export default function App() {
               className={`session-item ${a.id === activeId ? "active" : ""}`}
               onClick={() => setActiveId(a.id)}
             >
-              <div className="session-item-name">{a.name || a.model || "Untitled"}</div>
+              <div className="session-item-name">{sessionTitle(a)}</div>
               <div className="session-item-meta">
                 <span
                   className={`status-dot ${

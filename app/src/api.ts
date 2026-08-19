@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface Agent {
   id: string;
   name: string;
+  topic: string;
   model: string;
   status: string;
   messages: number;

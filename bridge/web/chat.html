@@ -142,7 +142,7 @@ async function loadAgents(selectNew){
   const d=await j("/api/agents?v="+Date.now());
   agentMap={};d.agents.forEach(a=>agentMap[a.id]=a);
   const sel=$("#agentSel");sel.innerHTML="";
-  d.agents.forEach(a=>{const o=document.createElement("option");o.value=a.id;o.textContent=(a.name||a.model||a.id.slice(0,8))+(" · "+a.messages);sel.appendChild(o)});
+  d.agents.forEach(a=>{const o=document.createElement("option");o.value=a.id;let t=(a.name||a.topic||a.model||a.id.slice(0,8));if(t.length>60)t=t.slice(0,60)+"…";o.textContent=t+(" · "+a.messages);sel.appendChild(o)});
   if(selectNew&&d.agents[0])agentId=d.agents[0].id;else if(!agentId&&d.agents[0])agentId=d.agents[0].id;
   sel.value=agentId;updateComposer();
 }
