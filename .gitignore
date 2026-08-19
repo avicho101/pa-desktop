@@ -1,0 +1,19 @@
+# node
+node_modules/
+dist/
+target/
+*.log
+
+# tauri
+app/src-tauri/target/
+app/dist/
+app/node_modules/
+bridge/node_modules/
+
+# os
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/

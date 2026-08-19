@@ -1,0 +1,10 @@
+{
+  "name": "pa-desktop-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop-grade HTTP+SSE bridge to the prime-agent daemon (embedded harness client). Binds to Tailscale only.",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}
